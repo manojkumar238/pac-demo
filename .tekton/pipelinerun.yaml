@@ -69,7 +69,7 @@ metadata:
 #       secretName: "{{ git_auth_secret }}"
 spec:
   pipelineRef:
-    name: bhavna-project/build-images-pipeline
+    name: build-images-pipeline
   params:
     - name: repo-url
       value: 'https://github.ibm.com/Bhavna-Jain3/My-Tessia-Mesh-Repo.git'
