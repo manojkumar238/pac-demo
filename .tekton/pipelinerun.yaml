@@ -8,7 +8,7 @@ metadata:
     pipelinesascode.tekton.dev/on-target-branch: "[main]"
     pipelinesascode.tekton.dev/task: "git-clone"
     pipelinesascode.tekton.dev/max-keep-runs: "5"
-    pipelinesascode.tekton.dev/pipeline: "https://github.com/manojkumar238/pac-demo/blob/demo-1/.tekton/pipelinerun.yaml"
+    pipelinesascode.tekton.dev/pipeline: "https://github.com/manojkumar238/pac-demo/blob/demo-1/.tekton/build-images-pipeline.yaml"
 # spec:
 #   params:
 #     - name: repo_url
