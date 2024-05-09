@@ -2,7 +2,7 @@ apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: build-images-pipeline
-  namespace: tessia-mesh
+  namespace: default
 spec:
   description: |
     This pipeline clones a git repo, runs code checks and tests, 
