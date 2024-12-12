@@ -1,0 +1,567 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: build-images-pipeline
+  namespace: default
+spec:
+  description: |
+    This pipeline clones a git repo, runs code checks and tests, 
+    installs rust and compiles components
+  params:
+    - default: 'https://github.ibm.com/tessia-project/tessia-mesh.git'
+      description: The git repo URL to clone from.
+      name: repo-url
+      type: string
+    - default: 'https://github.ibm.com/tessia-project/tessia-mesh-devops.git'
+      description: The git repo URL to clone from for fetch-source-devops-repo task.
+      name: repo-url2
+      type: string
+    - default: main
+      description: The branch to check out in tessia-mesh
+      name: revision
+      type: string
+    - default: main
+      description: The branch to check out in tessia-mesh-devops
+      name: revision2
+      type: string
+    - default: tessia-mesh
+      description: Subdirectory inside the `output` Workspace to clone the repo into.
+      name: subdirectory
+      type: string
+    - default: tessia-mesh-devops
+      description: Subdirectory inside the `output` Workspace to clone the repo into.
+      name: subdirectory2
+      type: string
+    - default: 'image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/rustimage'
+      description: name of the rust image that is used for tasks in pipeline
+      name: image-url
+      type: string
+    - default: development
+      description: production or development
+      name: environment
+      type: string
+  tasks:
+    - name: fetch-source
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: subdirectory
+          value: $(params.subdirectory)
+        - name: deleteExisting
+          value: 'true'
+      taskRef:
+        kind: ClusterTask
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: shared-data
+    - name: fetch-source-devops-repo
+      params:
+        - name: url
+          value: $(params.repo-url2)
+        - name: revision
+          value: $(params.revision2)
+        - name: subdirectory
+          value: $(params.subdirectory2)
+        - name: deleteExisting
+          value: 'true'
+      taskRef:
+        kind: ClusterTask
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: shared-data2
+    - name: build-rustimage
+      params:
+        - name: IMAGE
+          value: $(params.image-url)
+        - name: STORAGE_DRIVER
+          value: vfs
+        - name: FORMAT
+          value: docker
+        - name: DOCKERFILE
+          value: ./rustimage_Dockerfile
+        - name: CONTEXT
+          value: ./tessia-mesh-devops/devops_dockerfiles
+        - name: TLSVERIFY
+          value: 'true'
+        - name: SKIP_PUSH
+          value: 'false'
+      runAfter:
+        - fetch-source
+        - fetch-source-devops-repo
+      taskRef:
+        kind: ClusterTask
+        name: buildah
+      workspaces:
+        - name: source
+          workspace: shared-data
+    - name: codeformatcheck-guestmanager
+      params:
+        - name: component-name
+          value: guest_manager
+        - name: image-url
+          value: $(params.image-url)
+        - name: directory
+          value: tessia-mesh
+      runAfter:
+        - build-rustimage
+      taskRef:
+        kind: Task
+        name: code-format-check
+      workspaces:
+        - name: codecheck
+          workspace: shared-data
+    - name: codeformatcheck-permissionmanager
+      params:
+        - name: component-name
+          value: permission_manager
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - build-rustimage
+      taskRef:
+        kind: Task
+        name: code-format-check
+      workspaces:
+        - name: codecheck
+          workspace: shared-data
+    - name: codeformatcheck-resourcemanager
+      params:
+        - name: component-name
+          value: resource_manager
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - build-rustimage
+      taskRef:
+        kind: Task
+        name: code-format-check
+      workspaces:
+        - name: codecheck
+          workspace: shared-data
+    - name: codeformatcheck-logcollector
+      params:
+        - name: component-name
+          value: log_collector
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - build-rustimage
+      taskRef:
+        kind: Task
+        name: code-format-check
+      workspaces:
+        - name: codecheck
+          workspace: shared-data
+    - name: codeformatcheck-scheduler
+      params:
+        - name: component-name
+          value: scheduler
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - build-rustimage
+      taskRef:
+        kind: Task
+        name: code-format-check
+      workspaces:
+        - name: codecheck
+          workspace: shared-data
+    - name: codeformatcheck-router
+      params:
+        - name: component-name
+          value: router
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - build-rustimage
+      taskRef:
+        kind: Task
+        name: code-format-check
+      workspaces:
+        - name: codecheck
+          workspace: shared-data
+    - name: unittest-guestmanager
+      params:
+        - name: component-name
+          value: guest_manager
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - codeformatcheck-guestmanager
+      taskRef:
+        kind: Task
+        name: unittest
+      workspaces:
+        - name: cargo
+          workspace: shared-data
+    - name: unittest-permissionmanager
+      params:
+        - name: component-name
+          value: permission_manager
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - codeformatcheck-permissionmanager
+      taskRef:
+        kind: Task
+        name: unittest
+      workspaces:
+        - name: cargo
+          workspace: shared-data
+    - name: unittest-resourcemanager
+      params:
+        - name: component-name
+          value: resource_manager
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - codeformatcheck-resourcemanager
+      taskRef:
+        kind: Task
+        name: unittest
+      workspaces:
+        - name: cargo
+          workspace: shared-data
+    - name: unittest-scheduler
+      params:
+        - name: component-name
+          value: scheduler
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - codeformatcheck-scheduler
+      taskRef:
+        kind: Task
+        name: unittest
+      workspaces:
+        - name: cargo
+          workspace: shared-data
+    - name: unittest-logcollector
+      params:
+        - name: component-name
+          value: log_collector
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - codeformatcheck-logcollector
+      taskRef:
+        kind: Task
+        name: unittest
+      workspaces:
+        - name: cargo
+          workspace: shared-data
+    - name: unittest-router
+      params:
+        - name: component-name
+          value: router
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - codeformatcheck-router
+      taskRef:
+        kind: Task
+        name: unittest
+      workspaces:
+        - name: cargo
+          workspace: shared-data
+    - name: router-url-change
+      params:
+        - name: component-name
+          value: router
+        - name: directory
+          value: tessia-mesh
+        - name: image-url
+          value: $(params.image-url)
+      runAfter:
+        - unittest-router
+      taskRef:
+        kind: Task
+        name: url-change
+      workspaces:
+        - name: compile
+          workspace: shared-data
+    - name: compile-guestmanager
+      params:
+        - name: component-name
+          value: guest_manager
+        - name: image-url
+          value: $(params.image-url)
+        - name: directory
+          value: tessia-mesh
+      runAfter:
+        - unittest-guestmanager
+      taskRef:
+        kind: Task
+        name: compile-component
+      workspaces:
+        - name: compile
+          workspace: shared-data
+    - name: compile-router
+      params:
+        - name: component-name
+          value: router
+        - name: image-url
+          value: $(params.image-url)
+        - name: directory
+          value: tessia-mesh
+      runAfter:
+        - router-url-change
+      taskRef:
+        kind: Task
+        name: compile-component
+      workspaces:
+        - name: compile
+          workspace: shared-data
+    - name: compile-permissionmanager
+      params:
+        - name: component-name
+          value: permission_manager
+        - name: image-url
+          value: $(params.image-url)
+        - name: directory
+          value: tessia-mesh
+      runAfter:
+        - unittest-permissionmanager
+      taskRef:
+        kind: Task
+        name: compile-component
+      workspaces:
+        - name: compile
+          workspace: shared-data
+    - name: compile-resourcemanager
+      params:
+        - name: component-name
+          value: resource_manager
+        - name: image-url
+          value: $(params.image-url)
+        - name: directory
+          value: tessia-mesh
+      runAfter:
+        - unittest-resourcemanager
+      taskRef:
+        kind: Task
+        name: compile-component
+      workspaces:
+        - name: compile
+          workspace: shared-data
+    - name: compile-logcollector
+      params:
+        - name: component-name
+          value: log_collector
+        - name: image-url
+          value: $(params.image-url)
+        - name: directory
+          value: tessia-mesh
+      runAfter:
+        - unittest-logcollector
+      taskRef:
+        kind: Task
+        name: compile-component
+      workspaces:
+        - name: compile
+          workspace: shared-data
+    - name: compile-scheduler
+      params:
+        - name: component-name
+          value: scheduler
+        - name: image-url
+          value: $(params.image-url)
+        - name: directory
+          value: tessia-mesh
+      runAfter:
+        - unittest-scheduler
+      taskRef:
+        kind: Task
+        name: compile-component
+      workspaces:
+        - name: compile
+          workspace: shared-data
+    - name: build-guestmanager
+      params:
+        - name: component-name
+          value: guest_manager
+        - name: IMAGE
+          value: 'image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/guest_manager'
+        - name: STORAGE_DRIVER
+          value: vfs
+        - name: FORMAT
+          value: docker
+        - name: DOCKERFILE
+          value: ./tessia-mesh-devops/devops_dockerfiles/guest_manager_Dockerfile
+        - name: CONTEXT
+          value: ./tessia-mesh
+        - name: TLSVERIFY
+          value: 'true'
+        - name: SKIP_PUSH
+          value: 'false'
+      runAfter:
+        - compile-guestmanager
+      taskRef:
+        kind: ClusterTask
+        name: buildah
+      workspaces:
+        - name: source
+          workspace: shared-data
+    - name: build-router
+      params:
+        - name: component-name
+          value: router
+        - name: IMAGE
+          value: 'image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/router'
+        - name: STORAGE_DRIVER
+          value: vfs
+        - name: FORMAT
+          value: docker
+        - name: DOCKERFILE
+          value: ./tessia-mesh-devops/devops_dockerfiles/router_Dockerfile
+        - name: CONTEXT
+          value: ./tessia-mesh
+        - name: TLSVERIFY
+          value: 'true'
+        - name: SKIP_PUSH
+          value: 'false'
+      runAfter:
+        - compile-router
+      taskRef:
+        kind: ClusterTask
+        name: buildah
+      workspaces:
+        - name: source
+          workspace: shared-data
+    - name: build-permissionmanager
+      params:
+        - name: component-name
+          value: permission_manager
+        - name: IMAGE
+          value: 'image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/permission_manager'
+        - name: STORAGE_DRIVER
+          value: vfs
+        - name: FORMAT
+          value: docker
+        - name: DOCKERFILE
+          value: ./tessia-mesh-devops/devops_dockerfiles/permission_manager_Dockerfile
+        - name: CONTEXT
+          value: ./tessia-mesh
+        - name: TLSVERIFY
+          value: 'true'
+        - name: SKIP_PUSH
+          value: 'false'
+      runAfter:
+        - compile-permissionmanager
+      taskRef:
+        kind: ClusterTask
+        name: buildah
+      workspaces:
+        - name: source
+          workspace: shared-data
+    - name: build-resourcemanager
+      params:
+        - name: component-name
+          value: resource_manager
+        - name: IMAGE
+          value: 'image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/resource_manager'
+        - name: STORAGE_DRIVER
+          value: vfs
+        - name: FORMAT
+          value: docker
+        - name: DOCKERFILE
+          value: ./tessia-mesh-devops/devops_dockerfiles/resource_manager_Dockerfile
+        - name: CONTEXT
+          value: ./tessia-mesh
+        - name: TLSVERIFY
+          value: 'true'
+        - name: SKIP_PUSH
+          value: 'false'
+      runAfter:
+        - compile-resourcemanager
+      taskRef:
+        kind: ClusterTask
+        name: buildah
+      workspaces:
+        - name: source
+          workspace: shared-data
+    - name: build-logcollector
+      params:
+        - name: component-name
+          value: log_collector
+        - name: IMAGE
+          value: 'image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/log_collector'
+        - name: STORAGE_DRIVER
+          value: vfs
+        - name: FORMAT
+          value: docker
+        - name: DOCKERFILE
+          value: ./tessia-mesh-devops/devops_dockerfiles/log_collector_Dockerfile
+        - name: CONTEXT
+          value: ./tessia-mesh
+        - name: TLSVERIFY
+          value: 'true'
+        - name: SKIP_PUSH
+          value: 'false'
+      runAfter:
+        - compile-logcollector
+      taskRef:
+        kind: ClusterTask
+        name: buildah
+      workspaces:
+        - name: source
+          workspace: shared-data
+    - name: build-scheduler
+      params:
+        - name: component-name
+          value: scheduler
+        - name: IMAGE
+          value: 'image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/scheduler'
+        - name: STORAGE_DRIVER
+          value: vfs
+        - name: FORMAT
+          value: docker
+        - name: DOCKERFILE
+          value: ./tessia-mesh-devops/devops_dockerfiles/scheduler_Dockerfile
+        - name: CONTEXT
+          value: ./tessia-mesh
+        - name: TLSVERIFY
+          value: 'true'
+        - name: SKIP_PUSH
+          value: 'false'
+      runAfter:
+        - compile-scheduler
+      taskRef:
+        kind: ClusterTask
+        name: buildah
+      workspaces:
+        - name: source
+          workspace: shared-data
+  workspaces:
+    - description: |
+        This workspace contains the cloned repo files, so they can be read by the next task.
+      name: shared-data
+    - description: |
+        This workspace contains the cloned repo files, so they can be read by the next task.
+      name: shared-data2
